@@ -28,6 +28,29 @@ def guidance(*, settled=False):
     }
 
 
+def sf_guidance(*, settled=False):
+    value = guidance(settled=settled)
+    value.update({
+        "frenet": {
+            "s_m": 0.2,
+            "f_m": 0.06,
+            "heading_error_deg": 7.0,
+            "speed_mps": 0.12,
+            "yaw_rate_rps": 0.18,
+        },
+        "command": {
+            "s_m": 0.2,
+            "f_m": 0.06,
+            "desired_yaw_rate_rps": 0.42,
+            "turn_demand": 0.4,
+            "drive_distance_m": 0.8,
+            "curve_severity": 0.3,
+            "brake_request": False,
+        },
+    })
+    return value
+
+
 class FakePathGuidance:
     def __init__(self):
         self.prepared = True
@@ -103,7 +126,24 @@ class VisionControlSessionTests(unittest.TestCase):
         self.assertTrue(decision.stop_required)
         self.assertEqual(decision.status, "ARRIVED")
 
+    def test_frenet_fields_are_the_canonical_pid_input(self):
+        self.path.next_guidance = sf_guidance()
+        first = self.control.update(
+            calibrated=True,
+            position=(0.2, 0.3),
+            frame_time=1.0,
+            now=1.0,
+            allow_course_update=True,
+            speed_mps=0.1,
+        )
+        self.assertAlmostEqual(first.pid["s_m"], 0.2)
+        self.assertAlmostEqual(first.pid["f_m"], 0.06)
+        self.assertAlmostEqual(first.pid["yaw_rate_rps"], 0.18)
+        self.assertAlmostEqual(first.pid["desired_yaw_rate_rps"], 0.42)
+        # Old names remain only as aliases for the HTTP adapter/replay code.
+        self.assertAlmostEqual(first.pid["cross_m"], first.pid["f_m"])
+        self.assertAlmostEqual(first.pid["along_m"], first.pid["s_m"])
+
 
 if __name__ == "__main__":
     unittest.main()
-

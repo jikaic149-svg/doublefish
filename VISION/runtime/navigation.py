@@ -3,9 +3,90 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 import math
 
 import numpy as np
+
+
+@dataclass(frozen=True)
+class FrenetState:
+    """一次路径跟踪更新的 Frenet 状态快照。
+
+    XY 仍由路径几何层保存和计算；控制层只把这里的 ``s``、``f``、
+    航向误差和曲率当作路径状态。``f_m`` 的正负遵循现有约定：正值
+    映射为机器鱼左转需求。
+    """
+
+    s_m: float
+    f_m: float
+    s_dot_mps: float
+    f_dot_mps: float
+    path_heading_deg: float
+    body_heading_deg: float
+    desired_heading_deg: float
+    heading_error_deg: float
+    yaw_rate_rps: float
+    curvature_per_m: float
+    speed_mps: float | None
+    remaining_m: float
+
+    def to_dict(self):
+        return {
+            "s_m": self.s_m,
+            "f_m": self.f_m,
+            "s": self.s_m,
+            "f": self.f_m,
+            "s_dot_mps": self.s_dot_mps,
+            "f_dot_mps": self.f_dot_mps,
+            "path_heading_deg": self.path_heading_deg,
+            "body_heading_deg": self.body_heading_deg,
+            "desired_heading_deg": self.desired_heading_deg,
+            "heading_error_deg": self.heading_error_deg,
+            "yaw_rate_rps": self.yaw_rate_rps,
+            "curvature_per_m": self.curvature_per_m,
+            "speed_mps": self.speed_mps,
+            "remaining_m": self.remaining_m,
+        }
+
+
+@dataclass(frozen=True)
+class GuidanceCommand:
+    """几何引导输出与旧 HTTP 协议之间的单一控制边界。
+
+    ``turn_demand`` 是控制语义上的归一化转弯需求。当前协议仍使用
+    ``protocol_x_error_m``，它只是为 MCU 现有 X-P 控制器保留的等效量，
+    不再把它误称为原始 Frenet 横向误差。
+    """
+
+    s_m: float
+    f_m: float
+    heading_error_deg: float
+    speed_mps: float | None
+    yaw_rate_rps: float
+    desired_yaw_rate_rps: float
+    turn_demand: float
+    protocol_x_error_m: float
+    drive_distance_m: float
+    curve_severity: float
+    brake_request: bool
+
+    def to_dict(self):
+        return {
+            "s_m": self.s_m,
+            "f_m": self.f_m,
+            "s": self.s_m,
+            "f": self.f_m,
+            "heading_error_deg": self.heading_error_deg,
+            "speed_mps": self.speed_mps,
+            "yaw_rate_rps": self.yaw_rate_rps,
+            "desired_yaw_rate_rps": self.desired_yaw_rate_rps,
+            "turn_demand": self.turn_demand,
+            "protocol_x_error_m": self.protocol_x_error_m,
+            "drive_distance_m": self.drive_distance_m,
+            "curve_severity": self.curve_severity,
+            "brake_request": self.brake_request,
+        }
 
 
 def _unit(vector):
@@ -14,6 +95,11 @@ def _unit(vector):
     if not np.isfinite(value).all() or length <= 1e-9:
         raise ValueError("方向向量无效")
     return value / length
+
+
+def _wrap_angle_rad(angle):
+    """Return an angle in [-pi, pi), preserving the sign at the wrap."""
+    return (float(angle) + math.pi) % (2.0 * math.pi) - math.pi
 
 
 def compensate_camera_latency(
@@ -223,6 +309,8 @@ class PathGuidance:
         arrival_radius_m=0.20,
         brake_radius_m=0.40,
         search_ahead_m=0.45,
+        yaw_rate_scale_rps=2.0,
+        cross_track_rate_gain=0.20,
     ):
         self.spacing_m = float(spacing_m)
         self.lookahead_m = float(lookahead_m)
@@ -253,6 +341,8 @@ class PathGuidance:
             self.arrival_radius_m, float(brake_radius_m)
         )
         self.search_ahead_m = float(search_ahead_m)
+        self.yaw_rate_scale_rps = max(0.1, float(yaw_rate_scale_rps))
+        self.cross_track_rate_gain = max(0.0, float(cross_track_rate_gain))
         self.heading_estimator = HeadingEstimator()
         self.clear()
 
@@ -289,6 +379,9 @@ class PathGuidance:
         self.progress_m = 0.0
         self.segment_index = 0
         self._turn_sign = 0.0
+        self._last_heading_angle_rad = None
+        self._last_heading_time = None
+        self._yaw_rate_rps = 0.0
         self.last_result = None
 
     @property
@@ -302,6 +395,9 @@ class PathGuidance:
         self.progress_m = 0.0
         self.segment_index = 0
         self._turn_sign = 0.0
+        self._last_heading_angle_rad = None
+        self._last_heading_time = None
+        self._yaw_rate_rps = 0.0
         self.last_result = None
         self.heading_estimator.reset(initial_heading, position, timestamp)
         return self.update(position, timestamp, allow_course_update=False)
@@ -375,6 +471,42 @@ class PathGuidance:
             current, timestamp, allow_course_update=allow_course_update
         )
 
+        # The position estimator is the only heading source available to the
+        # desktop application.  Keep its derivative explicit in the Frenet
+        # state so the controller can distinguish a heading error from an
+        # already-correcting yaw motion.  This is a course-derived estimate,
+        # not an IMU measurement.
+        heading_angle_rad = float(math.atan2(float(heading[1]), float(heading[0])))
+        now = float(timestamp)
+        if (
+            self._last_heading_angle_rad is not None
+            and self._last_heading_time is not None
+            and now > self._last_heading_time
+        ):
+            raw_yaw_rate = _wrap_angle_rad(
+                heading_angle_rad - self._last_heading_angle_rad
+            ) / (now - self._last_heading_time)
+            # Reject a one-frame heading flip; the heading estimator already
+            # rejects near-180-degree course jumps, but this protects the
+            # derivative when a marker briefly changes contour.
+            if math.isfinite(raw_yaw_rate) and abs(raw_yaw_rate) <= 12.0:
+                self._yaw_rate_rps = (
+                    0.35 * raw_yaw_rate + 0.65 * self._yaw_rate_rps
+                )
+        self._last_heading_angle_rad = heading_angle_rad
+        self._last_heading_time = now
+
+        speed_valid = speed_mps is not None and math.isfinite(float(speed_mps))
+        measured_speed_mps = max(0.0, float(speed_mps)) if speed_valid else 0.0
+        velocity = self.heading_estimator.velocity_estimator.velocity
+        if velocity is None or not np.isfinite(velocity).all():
+            velocity = heading * measured_speed_mps
+        else:
+            velocity = np.asarray(velocity, dtype=np.float64).reshape(2)
+        velocity_speed_mps = float(np.linalg.norm(velocity))
+        if not speed_valid and velocity_speed_mps > 0.0:
+            measured_speed_mps = velocity_speed_mps
+
         # body_left_m 保留为鱼体到前视点的左右诊断值。
         target = lookahead - current
         body_forward_m = float(np.dot(heading, target))
@@ -396,6 +528,16 @@ class PathGuidance:
         path_left_normal = np.asarray(
             [near_tangent[1], -near_tangent[0]], dtype=np.float64
         )
+        # ``f`` uses the screen/right normal so its sign remains compatible
+        # with the existing MCU LEFT/RIGHT convention.  XY is only used here
+        # to project the measurement into the path's S/F frame.
+        path_right_normal = -path_left_normal
+        s_dot_mps = float(np.dot(velocity, near_tangent))
+        f_dot_mps = float(np.dot(velocity, path_right_normal))
+        frenet_denominator = 1.0 - path_curvature_per_m * signed_cross_track_error_m
+        if abs(frenet_denominator) < 0.10:
+            frenet_denominator = 0.10 if frenet_denominator >= 0.0 else -0.10
+        s_dot_mps /= frenet_denominator
         desired_course = (
             math.cos(los_angle_rad) * near_tangent
             + math.sin(los_angle_rad) * path_left_normal
@@ -449,8 +591,22 @@ class PathGuidance:
             -1.0,
             1.0,
         ))
+        # Frenet control law.  The existing normalized demand is retained as
+        # the nominal term, while f_dot adds a bounded damping term.  This is
+        # the first complete S/F boundary: s and f (and their rates) are the
+        # controller inputs; Cartesian coordinates never cross the control
+        # interface.
+        speed_for_damping = max(measured_speed_mps, 0.05)
+        cross_track_rate_feedback = float(np.clip(
+            self.cross_track_rate_gain * f_dot_mps / speed_for_damping,
+            -0.35,
+            0.35,
+        ))
+        desired_yaw_rate_rps = self.yaw_rate_scale_rps * (
+            curve_feedforward + heading_feedback - cross_track_rate_feedback
+        )
         steering_demand = float(np.clip(
-            curve_feedforward + heading_feedback,
+            desired_yaw_rate_rps / self.yaw_rate_scale_rps,
             -1.0,
             1.0,
         ))
@@ -459,8 +615,6 @@ class PathGuidance:
         endpoint_distance = float(np.linalg.norm(current - self.path[-1]))
         remaining = max(0.0, float(self.cumulative[-1]) - self.progress_m)
         drive_distance = max(remaining, endpoint_distance)
-        speed_valid = speed_mps is not None and math.isfinite(float(speed_mps))
-        measured_speed_mps = max(0.0, float(speed_mps)) if speed_valid else 0.0
         arrived = (
             endpoint_distance <= self.arrival_radius_m
             and remaining <= self.arrival_radius_m
@@ -470,9 +624,48 @@ class PathGuidance:
             and endpoint_distance <= self.brake_radius_m
             and remaining <= self.brake_radius_m
         )
+        frenet_state = FrenetState(
+            s_m=float(self.progress_m),
+            f_m=signed_cross_track_error_m,
+            s_dot_mps=s_dot_mps,
+            f_dot_mps=f_dot_mps,
+            path_heading_deg=math.degrees(
+                math.atan2(float(near_tangent[1]), float(near_tangent[0]))
+            ),
+            body_heading_deg=math.degrees(
+                math.atan2(float(heading[1]), float(heading[0]))
+            ),
+            desired_heading_deg=math.degrees(
+                math.atan2(float(desired_course[1]), float(desired_course[0]))
+            ),
+            heading_error_deg=math.degrees(heading_error_rad),
+            yaw_rate_rps=self._yaw_rate_rps,
+            curvature_per_m=path_curvature_per_m,
+            speed_mps=measured_speed_mps if speed_valid else None,
+            remaining_m=remaining,
+        )
+        guidance_command = GuidanceCommand(
+            s_m=float(self.progress_m),
+            f_m=signed_cross_track_error_m,
+            heading_error_deg=math.degrees(heading_error_rad),
+            speed_mps=measured_speed_mps if speed_valid else None,
+            yaw_rate_rps=self._yaw_rate_rps,
+            desired_yaw_rate_rps=desired_yaw_rate_rps,
+            turn_demand=steering_demand,
+            protocol_x_error_m=x_error_m,
+            drive_distance_m=drive_distance,
+            curve_severity=control_severity,
+            brake_request=brake_request,
+        )
         result = {
             "cross_m": x_error_m,
             "x_error_m": x_error_m,
+            # Canonical Frenet names.  The legacy names above are retained
+            # only for rendering and replay compatibility.
+            "s_m": float(self.progress_m),
+            "f_m": signed_cross_track_error_m,
+            "s_dot_mps": s_dot_mps,
+            "f_dot_mps": f_dot_mps,
             "body_left_m": body_left_m,
             "body_forward_m": body_forward_m,
             "heading_error_deg": math.degrees(heading_error_rad),
@@ -491,6 +684,10 @@ class PathGuidance:
             "curve_measure_span_m": curve_measure_span_m,
             "curve_feedforward": curve_feedforward,
             "heading_feedback": heading_feedback,
+            "cross_track_rate_feedback": cross_track_rate_feedback,
+            "desired_yaw_rate_rps": desired_yaw_rate_rps,
+            "yaw_rate_scale_rps": self.yaw_rate_scale_rps,
+            "yaw_rate_rps": self._yaw_rate_rps,
             # 仅保留为 LOS 期望航向的诊断分量；不再单独叠加到总转向。
             "cross_track_feedback": cross_track_feedback,
             "steering_demand": steering_demand,
@@ -523,6 +720,20 @@ class PathGuidance:
             "seg_index": self.segment_index,
             "arrived": arrived,
             "settled": arrived,
+            # Structured control boundary. The legacy flat keys above remain
+            # for compatibility with the UI and existing replay tests.
+            "frenet": frenet_state.to_dict(),
+            "sf": {
+                "s": frenet_state.s_m,
+                "f": frenet_state.f_m,
+                "s_dot": frenet_state.s_dot_mps,
+                "f_dot": frenet_state.f_dot_mps,
+                "heading_error": frenet_state.heading_error_deg,
+                "speed": frenet_state.speed_mps,
+                "yaw_rate": frenet_state.yaw_rate_rps,
+                "curvature": frenet_state.curvature_per_m,
+            },
+            "command": guidance_command.to_dict(),
         }
         self.last_result = result
         return result

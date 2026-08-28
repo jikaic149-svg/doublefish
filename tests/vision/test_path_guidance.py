@@ -115,6 +115,59 @@ class PathGuidanceTests(unittest.TestCase):
         backward = guidance.update((0.12, 0.0), 0.6, allow_course_update=False)
         self.assertGreaterEqual(backward["along_m"], forward["along_m"])
 
+    def test_structured_frenet_state_and_command_preserve_legacy_outputs(self):
+        guidance = PathGuidance()
+        result = guidance.start(
+            [(0.0, 0.0), (1.0, 0.0)], (0.0, 0.05), 0.0, (1.0, 0.0)
+        )
+
+        frenet = result["frenet"]
+        command = result["command"]
+        self.assertAlmostEqual(frenet["s_m"], result["along_m"])
+        self.assertAlmostEqual(
+            frenet["f_m"], result["signed_cross_track_error_m"]
+        )
+        self.assertIn("s_dot_mps", frenet)
+        self.assertIn("f_dot_mps", frenet)
+        self.assertIn("yaw_rate_rps", frenet)
+        self.assertAlmostEqual(
+            frenet["heading_error_deg"], result["heading_error_deg"]
+        )
+        self.assertAlmostEqual(
+            frenet["curvature_per_m"], result["path_curvature_per_m"]
+        )
+        self.assertAlmostEqual(command["turn_demand"], result["steering_demand"])
+        self.assertAlmostEqual(
+            command["protocol_x_error_m"], result["x_error_m"]
+        )
+        self.assertAlmostEqual(
+            command["drive_distance_m"], result["drive_distance_m"]
+        )
+        self.assertAlmostEqual(
+            command["desired_yaw_rate_rps"], result["desired_yaw_rate_rps"]
+        )
+
+    def test_frenet_rates_are_reported_in_path_frame(self):
+        guidance = PathGuidance(cross_track_rate_gain=0.20)
+        guidance.start(
+            [(0.0, 0.0), (1.0, 0.0)],
+            position=(0.0, 0.0),
+            timestamp=0.0,
+            initial_heading=(math.cos(math.radians(30.0)), math.sin(math.radians(30.0))),
+        )
+        # With no course update the supplied speed is projected through the
+        # current body heading and path tangent.
+        result = guidance.update(
+            (0.0, 0.0), 0.1, allow_course_update=False, speed_mps=0.2
+        )
+        self.assertAlmostEqual(result["s_dot_mps"], 0.2 * math.cos(math.radians(30.0)), places=6)
+        self.assertAlmostEqual(result["f_dot_mps"], 0.2 * math.sin(math.radians(30.0)), places=6)
+        self.assertLess(
+            result["desired_yaw_rate_rps"], result["yaw_rate_scale_rps"]
+        )
+        self.assertAlmostEqual(result["frenet"]["s_m"], result["s_m"])
+        self.assertAlmostEqual(result["frenet"]["f_m"], result["f_m"])
+
     def test_off_path_distance_shortens_lookahead_and_adds_cross_feedback(self):
         guidance = PathGuidance(
             lookahead_m=0.24,

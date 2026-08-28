@@ -1,5 +1,20 @@
 # process
 
+## 2026-08-28 视觉控制边界改为完整 Frenet S/F
+
+- 修改原因：用户要求路径跟踪使用完整的 Frenet `s/f` 状态，避免把二维池面坐标或旧的 `x_error` 名称继续当作控制语义；同时补齐航向变化和横向误差变化对控制诊断的表达。
+- 最终决策：`VISION/runtime/navigation.py` 的结构化状态新增 `s_dot`、`f_dot` 和由视觉航向估计得到的 `yaw_rate`；引导命令新增 `s`、`f`、航向误差、实测/期望偏航率和归一化转向需求。`VISION/runtime/control.py` 改为优先消费 Frenet S/F 字段，旧 `cross_m/along_m/dist_m` 只保留为兼容别名；到 MCU 的 `x_error/y_error` 转换集中在 HTTP 适配边界，固件协议和执行器行为未修改。
+- 涉及文件：`VISION/runtime/navigation.py`、`VISION/runtime/control.py`、`tests/vision/test_path_guidance.py`、`tests/vision/test_vision_control.py`。
+- 验证方式和结果：37 项视觉路径/控制单元测试通过；`VISION/runtime` 编译检查通过；`git diff --check` 通过。
+- 已知限制：`yaw_rate` 是基于视觉位移航向的估计，不是 IMU 实测；当前 MCU 仍接收旧的 `x_error/y_error` 协议，因此这次完成的是视觉端完整 S/F 控制边界，不是固件原生 Frenet 执行器分配；两条动力不同的机器鱼仍需各自的动力学标定。
+- 待确认事项：入水验证 `s/f` 符号、`f_dot` 阻尼方向、期望偏航率与实际转弯响应；确认无误后再决定是否新增按硬件鱼 ID 的动力学配置和原生协议字段。
+
+## 2026-08-28 Frenet 状态与等效转弯指令边界
+- 修改原因：区分路径 Frenet 状态、池面 XY 几何和机器鱼的实际动力输入，避免把航向角误认为可以直接下发的执行器命令。
+- 最终决策：在 `VISION/runtime/navigation.py` 增加结构化 `FrenetState` 与 `GuidanceCommand`。状态明确保存 `s`、有符号横向误差 `f`、路径/鱼体/期望航向、航向误差、曲率、速度和剩余距离；命令明确保存唯一归一化 `turn_demand`，并把现有 `x_error` 标记为兼容 MCU X-P 控制器的等效协议量。保留原 LOS、曲率前馈、航向反馈、`x_error = turn_demand / 3`、HTTP `/vision_pid` 和 ESP32 执行器混控，不修改固件、协议或控制数值。
+- 验证方式和结果：新增结构化状态与命令回归测试；路径引导和视觉控制相关 34 项 unittest 通过，Python runtime 编译检查和 `git diff --check` 通过。完整视觉测试仍受当前环境缺少 `cv2` 影响，6 个依赖 OpenCV 的测试模块未能导入。
+- 已知限制：当前仍是基于 Frenet 状态的几何路径跟踪，不是带鱼体动力学模型的 MPC/动态最优控制；`turn_demand` 到尾部偏置、螺旋桨舵角和推进功率的映射仍由固件经验参数完成，实机水动力等效性需要入水数据确认。
+
 ## 2026-08-28 YOLO 运行时模型改为项目相对路径
 
 - 修改原因：视觉重构后模型路径由 Python 文件位置拼成绝对路径，换电脑或复制仓库时不便复用。

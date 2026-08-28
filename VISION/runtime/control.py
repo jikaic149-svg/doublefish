@@ -232,9 +232,9 @@ class RoboFishComm:
 
     def process_tracking_error(
         self,
-        cross_m,
-        along_m,
-        dist_m,
+        cross_m=None,
+        along_m=None,
+        dist_m=None,
         speed_mps=0.0,
         curve_severity=0.0,
         brake_request=False,
@@ -242,14 +242,32 @@ class RoboFishComm:
         heading_error_deg=0.0,
         path_curvature_per_m=0.0,
         steering_demand=0.0,
+        *,
+        s_m=None,
+        f_m=None,
+        remaining_m=None,
+        yaw_rate_rps=0.0,
+        desired_yaw_rate_rps=0.0,
     ):
-        """Send calibrated errors; the ESP32 calculates both X and Y PID."""
+        """Send a Frenet S/F sample through the legacy MCU wire adapter.
+
+        The controller boundary is ``(s, f, heading, speed, yaw_rate)``.
+        The ESP32 protocol still calls its two scalar inputs ``x_error`` and
+        ``y_error``; conversion is isolated here until firmware accepts a
+        native Frenet message.
+        """
+        if f_m is None:
+            f_m = cross_m if cross_m is not None else 0.0
+        if s_m is None:
+            s_m = along_m if along_m is not None else 0.0
+        if remaining_m is None:
+            remaining_m = dist_m if dist_m is not None else 0.0
         self.vision_seq = (self.vision_seq + 1) & 0x7FFFFFFF
         queued = self._send_async({
             "kind": "vision_pid",
             "seq": self.vision_seq,
-            "x_error": float(np.clip(cross_m, -5.0, 5.0)),
-            "y_error": float(np.clip(dist_m, 0.0, 5.0)),
+            "x_error": float(np.clip(f_m, -5.0, 5.0)),
+            "y_error": float(np.clip(remaining_m, 0.0, 5.0)),
             "speed": float(np.clip(speed_mps, 0.0, 5.0)),
             "curve": float(np.clip(curve_severity, 0.0, 1.0)),
             "brake": bool(brake_request),
@@ -371,17 +389,59 @@ class VisionControlSession:
 
         pid = None
         if now - self._last_control_t >= self.command_interval_s:
+            # The navigation layer exposes one semantic turn command.  The
+            # legacy flat fields remain as a compatibility fallback for
+            # replay fixtures and older guidance providers.
+            command = guidance.get("command") or {}
+            frenet = guidance.get("frenet") or {}
+            s_m = float(frenet.get("s_m", guidance.get("s_m", guidance["along_m"])))
+            f_m = float(frenet.get(
+                "f_m", guidance.get(
+                    "f_m",
+                    guidance.get(
+                        "signed_cross_track_error_m",
+                        command.get("protocol_x_error_m", guidance.get("x_error_m", 0.0)),
+                    ),
+                )
+            ))
+            heading_error_deg = float(frenet.get(
+                "heading_error_deg", guidance["heading_error_deg"]
+            ))
+            yaw_rate_rps = float(frenet.get("yaw_rate_rps", guidance.get("yaw_rate_rps", 0.0)))
+            desired_yaw_rate_rps = float(command.get(
+                "desired_yaw_rate_rps", guidance.get("desired_yaw_rate_rps", 0.0)
+            ))
+            speed_value = frenet.get("speed_mps", guidance.get("speed_mps"))
+            if speed_value is None:
+                speed_value = speed_mps
+            remaining_m = float(command.get(
+                "drive_distance_m", guidance["drive_distance_m"]
+            ))
             pid = {
-                "cross_m": guidance["x_error_m"],
-                "along_m": guidance["along_m"],
-                "dist_m": guidance["drive_distance_m"],
-                "speed_mps": float(speed_mps),
-                "curve_severity": guidance["curve_severity"],
-                "brake_request": guidance["brake_request"],
-                "cross_track_m": guidance["cross_track_m"],
-                "heading_error_deg": guidance["heading_error_deg"],
+                # Canonical S/F fields consumed by the transport adapter.
+                "s_m": s_m,
+                "f_m": f_m,
+                "remaining_m": remaining_m,
+                "heading_error_deg": heading_error_deg,
+                "yaw_rate_rps": yaw_rate_rps,
+                "desired_yaw_rate_rps": desired_yaw_rate_rps,
+                "speed_mps": float(speed_value),
+                "curve_severity": command.get(
+                    "curve_severity", guidance["curve_severity"]
+                ),
+                "brake_request": command.get(
+                    "brake_request", guidance["brake_request"]
+                ),
+                "cross_track_m": guidance.get("cross_track_m", abs(f_m)),
                 "path_curvature_per_m": guidance["path_curvature_per_m"],
-                "steering_demand": guidance["steering_demand"],
+                "steering_demand": command.get(
+                    "turn_demand", guidance["steering_demand"]
+                ),
+                # Compatibility aliases for existing tests, logging and
+                # callers that still use the old names.
+                "cross_m": f_m,
+                "along_m": s_m,
+                "dist_m": remaining_m,
             }
             self._last_control_t = now
         self.status = (
@@ -393,4 +453,3 @@ class VisionControlSession:
             guidance=guidance,
             pid=pid,
         )
-
