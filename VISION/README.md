@@ -2,7 +2,7 @@
 
 ## 边界
 
-视觉工程按 `vision` skill 的职责拆分为实时视觉、训练数据和模型配置三层；
+视觉工程按 `vision` skill 的职责保留实时视觉和运行时模型两层；
 机器鱼 HTTP 协议仍由实时层的设备适配器调用，ESP32 固件本身保持在
 `RoboFishPartnerDriverSDK/`，不与视觉算法混编。
 
@@ -16,12 +16,10 @@ VISION/
 │  ├─ control.py         视觉控制会话与机器鱼 HTTP 适配
 │  ├─ interface.py       相机、平板 TCP、MJPEG 和录像适配
 │  └─ ui.py              输入、工具栏、HUD 和遥测渲染
-├─ models/               运行时模型与历史候选模型
+├─ models/               运行时模型
 │  └─ best.pt            当前程序实际加载的 YOLO 模型
 ├─ configs/              本地标定配置（不入库）
-├─ training/fish_v15/    数据集元数据、脚本和评估记录
-├─ data/raw/             原始视频（只读、本地产物）
-├─ data/results/         结构化识别结果和预览（本地产物）
+├─ data/raw/             可选的原始回放视频（只读、本地产物）
 └─ requirements.txt      Python 依赖
 ```
 
@@ -61,13 +59,11 @@ VS Code 的启动配置已经指向同一个入口。默认相机索引为 `1`�
 `http://<电脑IP>:8090/video.mjpg`。相机或目标恢复后不会自动恢复推进，需要
 人工重新启动。
 
-## 训练与数据
+## 运行时模型与回放
 
-数据集脚本位于 `training/fish_v15/scripts/`，标签、划分清单和评估报告位于
-`training/fish_v15/dataset_v15_reviewed_large/`。原始视频放在 `data/raw/`，
-生成视频和 JSON 结果放在 `data/results/`；大文件已由根 `.gitignore` 排除。
-训练运行目录中的候选权重不会被实时程序自动加载，运行时只读取
-`models/best.pt`。
+训练数据、训练/评估脚本和候选权重不随运行时目录交付。运行时只读取
+`models/best.pt`；需要离线回放时，可将视频放入 `data/raw/`，结果写入仓库根目录
+`output/vision/`。
 
 运行时 YOLO 调用使用相对于 `VISION/runtime/` 的 `../models/best.pt`，入口启动时
 会先切换到该目录，因此不依赖个人电脑的绝对路径。

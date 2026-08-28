@@ -597,6 +597,7 @@ class VisionToolbar:
 
 class VisionHud:
     SOURCE_NAMES = {
+        "DETECTED": "YOLO EKF fixed point",
         "RIGID_BODY": "白色刚性鱼身",
         "MARKER": "鱼尾定位",
         "PREDICTED": "短时预测",
@@ -647,7 +648,7 @@ class VisionHud:
 
     @staticmethod
     def _source_color(source: str) -> Color:
-        if source in ("RIGID_BODY", "MARKER"):
+        if source in ("RIGID_BODY", "MARKER", "DETECTED"):
             return UiPalette.SUCCESS
         if source == "PREDICTED":
             return UiPalette.WARNING
@@ -1049,6 +1050,28 @@ class VisionPresentation:
             _outlined_text(image, str(index + 1), (centre[0] + 10, centre[1] - 10))
 
     def _draw_detection(self, image, result):
+        tracks = getattr(result, "tracks", None) or {}
+        if tracks:
+            colours = {"red_fish": (0, 0, 255), "blue_fish": (255, 0, 0)}
+            for class_name, track in tracks.items():
+                colour = colours.get(class_name, UiPalette.PRIMARY)
+                if track.bbox is not None:
+                    x1, y1, x2, y2 = [int(round(value)) for value in track.bbox]
+                    cv2.rectangle(image, (x1, y1), (x2, y2), colour,
+                                  2 if track.source == "DETECTED" else 1)
+                    draw_unicode_text(
+                        image, f"{class_name} {track.confidence * 100:.0f}%",
+                        (x1, max(3, y1 - 20)), 13, colour,
+                        bold=True, stroke_width=1,
+                    )
+                if track.position is not None:
+                    point = tuple(int(round(value)) for value in track.position)
+                    if track.source == "DETECTED":
+                        cv2.drawMarker(image, point, colour, cv2.MARKER_CROSS,
+                                       14, 2, cv2.LINE_AA)
+                    else:
+                        cv2.circle(image, point, 6, colour, 1, cv2.LINE_AA)
+            return
         bbox = result.yolo_bbox
         if bbox is None:
             return
@@ -1068,6 +1091,7 @@ class VisionPresentation:
             return
         cx, cy = result.display_pixel
         colours = {
+            "DETECTED": UiPalette.PRIMARY,
             "RIGID_BODY": UiPalette.SUCCESS,
             "MARKER": UiPalette.SUCCESS,
             "PREDICTED": UiPalette.WARNING,
@@ -1168,6 +1192,11 @@ class VisionPresentation:
                 "v": result.pixel[1] if result.pixel else None,
             },
             "reference": result.reference.to_dict(),
+            "selected_class_name": getattr(result, "selected_class_name", None),
+            "fish_tracks": {
+                name: track.to_dict() if hasattr(track, "to_dict") else _json_safe(track)
+                for name, track in (getattr(result, "tracks", None) or {}).items()
+            },
             "initial_heading": {
                 "calibrated": heading["angle_deg"] is not None,
                 "tail_pixel": heading["tail_point"],
@@ -1214,4 +1243,3 @@ class VisionPresentation:
                 "mcu_hz": mcu_hz,
             },
         }
-

@@ -34,7 +34,9 @@ from config import (
     YOLO_CONF_THRESHOLD,
     YOLO_DEVICE,
     YOLO_IMG_SIZE,
+    YOLO_MAX_DETECTIONS,
     YOLO_MODEL_PATH,
+    FISH_ANCHORS_PATH,
 )
 from control import ControlDecision, RoboFishComm, VisionControlSession
 from interface import (
@@ -59,6 +61,7 @@ from perception import (
     VisionPipeline,
     build_calibration_homography,
 )
+from tracking import EKFConfig, FishTrackManager
 from ui import (
     VisionHud,
     VisionMouseController,
@@ -81,6 +84,7 @@ class VisionApplication:
         self.fish_comm = None
         self.detector = None
         self.reference_tracker = None
+        self.track_manager = None
         self.pipeline = None
         self.control = None
         self.presentation = None
@@ -142,12 +146,24 @@ class VisionApplication:
             conf=YOLO_CONF_THRESHOLD,
             imgsz=YOLO_IMG_SIZE,
             device=YOLO_DEVICE,
+            max_det=YOLO_MAX_DETECTIONS,
         )
         self.reference_tracker = FixedReferenceTracker(
-            profile_path=MARKER_PROFILE_PATH,
+            # Compatibility object only; the EKF pipeline never calls its
+            # HSV update and does not load a color profile at startup.
+            profile_path=None,
             enable_rigid_body=False,
         )
         self._report_marker_profile()
+        anchors = FishTrackManager.load_anchors(FISH_ANCHORS_PATH)
+        self.track_manager = FishTrackManager(
+            config=EKFConfig(
+                max_prediction_s=0.45,
+                mahalanobis_gate=9.21,
+                max_speed=800.0,
+            ),
+            anchors=anchors,
+        )
         self.pipeline = VisionPipeline(
             self.detector,
             self.reference_tracker,
@@ -158,6 +174,7 @@ class VisionApplication:
                 max_speed_mps=0.80,
             ),
             compensate_camera_latency,
+            track_manager=self.track_manager,
         )
 
         self.runtime = create_runtime_state(
@@ -220,6 +237,8 @@ class VisionApplication:
         )
 
     def _report_marker_profile(self):
+        print("HSV 色块跟踪已弃用；当前使用红/蓝 YOLO 固定框锚点 + EKF")
+        return
         if self.reference_tracker.is_profiled:
             print(f"已加载鱼尾色标模型: {MARKER_PROFILE_PATH}")
         elif self.reference_tracker.profile_load_error:

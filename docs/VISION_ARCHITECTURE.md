@@ -13,8 +13,7 @@ VISION/
 ├─ models/
 │  └─ best.pt          运行时 YOLO 模型
 ├─ configs/            本地标定配置
-├─ training/fish_v15/  数据集元数据和训练/评估脚本
-├─ data/               原始视频与结构化结果
+├─ data/raw/           可选的离线回放视频
 └─ requirements.txt
 ```
 

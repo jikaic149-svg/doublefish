@@ -34,12 +34,14 @@ class FishDetector:
         conf: float = 0.5,
         imgsz: int = 640,
         device=0,
+        max_det: int = 3,
         model_factory: Optional[Callable[[str], object]] = None,
     ):
         self.model_path = model_path
         self.conf = conf
         self.imgsz = imgsz
         self.device = device
+        self.max_det = max(2, int(max_det))
         self._model_factory = model_factory or _default_model_factory
 
         self._latest_frame = None
@@ -52,7 +54,9 @@ class FishDetector:
             "track_id": None,
             "frame_time": 0.0,
             "infer_fps": 0.0,
+            "detections": [],
         }
+        self._last_result_timestamp = float("-inf")
         self._status_lock = threading.Lock()
         self._status = {
             "loading": False,
@@ -160,7 +164,10 @@ class FishDetector:
                     imgsz=self.imgsz,
                     device=self.device,
                     iou=0.50,
-                    max_det=3,
+                    # Two fish are expected, while a low-contrast fish may
+                    # produce overlapping duplicate boxes.  Parsing performs
+                    # class-wise de-duplication after inference.
+                    max_det=self.max_det,
                     verbose=False,
                 )
                 parsed = self._parse_result(results, frame_time)
@@ -180,8 +187,11 @@ class FishDetector:
                     0.9 * self._fps_smooth + 0.1 * (1.0 / dt)
                 )
             parsed["infer_fps"] = self._fps_smooth
+            # A delayed worker result must never overwrite a newer result.
             with self._result_lock:
-                self._result = parsed
+                if float(parsed.get("frame_time", 0.0)) >= self._last_result_timestamp:
+                    self._result = parsed
+                    self._last_result_timestamp = float(parsed.get("frame_time", 0.0))
             with self._status_lock:
                 self._status["last_inference_error"] = None
 
@@ -194,6 +204,7 @@ class FishDetector:
             "track_id": None,
             "frame_time": frame_time,
             "infer_fps": 0.0,
+            "detections": [],
         }
         if not results:
             return parsed
@@ -201,16 +212,72 @@ class FishDetector:
         if boxes is None or len(boxes) == 0:
             return parsed
 
-        best_idx = int(boxes.conf.argmax().item())
-        x1, y1, x2, y2 = boxes.xyxy[best_idx].tolist()
-        parsed["pixel"] = [(x1 + x2) / 2.0, (y1 + y2) / 2.0]
-        parsed["bbox"] = [x1, y1, x2, y2]
-        parsed["confidence"] = float(boxes.conf[best_idx].item())
+        try:
+            xyxy = boxes.xyxy.cpu().numpy()
+            conf = boxes.conf.cpu().numpy()
+            cls = boxes.cls.cpu().numpy() if getattr(boxes, "cls", None) is not None else [0] * len(xyxy)
+            track_ids = boxes.id.cpu().numpy() if getattr(boxes, "id", None) is not None else None
+        except AttributeError:
+            # Small fake detectors in tests may expose plain numpy/list data.
+            xyxy = boxes.xyxy
+            conf = boxes.conf
+            cls = boxes.cls if getattr(boxes, "cls", None) is not None else [0] * len(xyxy)
+            track_ids = boxes.id if getattr(boxes, "id", None) is not None else None
 
-        if boxes.id is not None:
-            track_ids = boxes.id.cpu().numpy()
-            if len(track_ids) > best_idx:
-                parsed["track_id"] = int(track_ids[best_idx])
+        names = getattr(results[0], "names", None) or getattr(results[0], "_names", None)
+        candidates = []
+        for index, coords in enumerate(xyxy):
+            x1, y1, x2, y2 = [float(value) for value in coords]
+            class_id = int(cls[index]) if index < len(cls) else -1
+            class_name = None
+            if isinstance(names, dict):
+                class_name = names.get(class_id)
+            elif isinstance(names, (list, tuple)) and 0 <= class_id < len(names):
+                class_name = names[class_id]
+            # The checkpoint's class-id order is part of the data contract;
+            # normalize aliases from ``results.names`` to stable runtime names.
+            class_name = {0: "red_fish", 1: "blue_fish"}.get(
+                class_id, class_name or str(class_id)
+            )
+            item = {
+                "class_id": class_id,
+                "class_name": str(class_name),
+                "bbox": [x1, y1, x2, y2],
+                "confidence": float(conf[index]),
+                "timestamp": float(frame_time),
+                "width": max(0.0, x2 - x1),
+                "height": max(0.0, y2 - y1),
+                "aspect": max(x2 - x1, y2 - y1) / max(1e-6, min(x2 - x1, y2 - y1)),
+            }
+            if track_ids is not None and index < len(track_ids):
+                try:
+                    item["track_id"] = int(track_ids[index])
+                except (TypeError, ValueError):
+                    pass
+            candidates.append(item)
+
+        # Keep the highest-confidence non-overlapping candidate per class.
+        # Import lazily to avoid making the detector depend on the tracker at
+        # module import time (important for lightweight unit tests).
+        try:
+            try:
+                from .tracking import deduplicate_detections
+            except ImportError:
+                from tracking import deduplicate_detections
+            candidates = [item.to_dict() for item in deduplicate_detections(candidates)]
+        except Exception:
+            candidates.sort(key=lambda item: item["confidence"], reverse=True)
+            candidates = candidates[:2]
+        parsed["detections"] = candidates
+
+        if candidates:
+            best_idx = max(range(len(candidates)), key=lambda i: candidates[i]["confidence"])
+            best = candidates[best_idx]
+            x1, y1, x2, y2 = best["bbox"]
+            parsed["pixel"] = [(x1 + x2) / 2.0, (y1 + y2) / 2.0]
+            parsed["bbox"] = [x1, y1, x2, y2]
+            parsed["confidence"] = float(best["confidence"])
+            parsed["track_id"] = best.get("track_id")
         return parsed
 
 
@@ -225,6 +292,7 @@ import numpy as np
 
 
 class ReferenceSource:
+    DETECTED = "DETECTED"
     RIGID_BODY = "RIGID_BODY"
     MARKER = "MARKER"
     PREDICTED = "PREDICTED"
@@ -415,7 +483,10 @@ def _contour_geometry(contour: np.ndarray) -> Dict[str, float]:
 
 
 class FixedReferenceTracker:
-    """HSV marker tracker with explicit degraded and invalid states."""
+    """Deprecated HSV marker tracker retained for calibration compatibility.
+
+    The real-time pipeline uses :class:`tracking.FishTrackManager` instead.
+    """
 
     def __init__(
         self,
@@ -1382,6 +1453,7 @@ from config import (
     MARKER_TR,
     POS_SMOOTHING_ALPHA,
     YOLO_DETECT_INTERVAL_S,
+    YOLO_RECOVERY_INTERVAL_S,
 )
 
 
@@ -1402,6 +1474,8 @@ class VisionFrameResult:
     velocity: Optional[tuple[float, float]]
     speed: Optional[float]
     direction_deg: Optional[float]
+    tracks: dict[str, Any] = field(default_factory=dict)
+    selected_class_name: Optional[str] = None
 
     @property
     def yolo_bbox(self):
@@ -1419,19 +1493,28 @@ class VisionFrameResult:
     def track_id(self):
         return self.yolo_result.get("track_id")
 
+    @property
+    def fish_tracks(self):
+        return self.tracks
+
 
 class VisionPipeline:
-    """Combine low-rate YOLO identity and high-rate marker observations."""
+    """Combine sparse YOLO detections with per-class EKF point tracks."""
 
     def __init__(
         self,
         fish_detector,
-        reference_tracker,
-        velocity_estimator,
-        latency_compensator,
+        reference_tracker=None,
+        velocity_estimator=None,
+        latency_compensator=None,
+        track_manager=None,
+        selected_class_name: str = "red_fish",
     ):
         self.fish_detector = fish_detector
         self.reference_tracker = reference_tracker
+        self.track_manager = track_manager
+        self.selected_class_name = str(selected_class_name)
+        self._selected_track_started = False
         aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
         self.aruco_detector = cv2.aruco.ArucoDetector(
             aruco_dict, cv2.aruco.DetectorParameters()
@@ -1442,6 +1525,8 @@ class VisionPipeline:
         self._pixel_smooth = None
         self._position_smooth = None
         self._last_position_frame_time = None
+        self._homography_signature = None
+        self._homography_seen = False
         self.velocity_estimator = velocity_estimator
         self._latency_compensator = latency_compensator
 
@@ -1453,20 +1538,169 @@ class VisionPipeline:
         self._pixel_smooth = None
         self._position_smooth = None
         self._last_position_frame_time = None
-        self.velocity_estimator.reset()
+        if self.velocity_estimator is not None:
+            self.velocity_estimator.reset()
+        if self.track_manager is not None:
+            self.track_manager.reset()
+        self._selected_track_started = False
+        self._homography_signature = None
+        self._homography_seen = False
+
+    def select_track(self, class_name: str) -> None:
+        """Select which class is exposed through legacy scalar fields."""
+        self.selected_class_name = str(class_name)
+        self._selected_track_started = False
+
+    def calibrate_anchor(self, class_name: str, point, bbox, save_path=None):
+        """Set a normalized body point from one user click.
+
+        The click is deliberately class-specific and normalized by the current
+        box, so subsequent changes in scale or viewpoint keep the same body
+        reference.  Persistence is optional and should normally target the
+        ignored ``fish_anchors.local.json`` file.
+        """
+        if self.track_manager is None:
+            raise RuntimeError("anchor calibration requires an EKF track manager")
+        ratio = self.track_manager.set_anchor_from_click(class_name, point, bbox)
+        if save_path is not None:
+            self.track_manager.save_anchors(save_path)
+        return ratio
 
     def process(self, frame, frame_time: float, homography=None) -> VisionFrameResult:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if self.use_clahe:
             gray = self.clahe.apply(gray)
 
-        if frame_time - self._last_yolo_submit_t >= YOLO_DETECT_INTERVAL_S:
+        interval = YOLO_DETECT_INTERVAL_S
+        if self.track_manager is not None:
+            signature = None
+            if homography is not None:
+                try:
+                    signature = tuple(np.asarray(homography, dtype=np.float64).round(8).ravel())
+                except (TypeError, ValueError):
+                    signature = None
+            if self._homography_seen and signature != self._homography_signature:
+                # Do not mix pixel-space and calibrated-world states across a
+                # re-calibration event.
+                self.track_manager.reset()
+                self._pixel_smooth = None
+                self._position_smooth = None
+            self._homography_signature = signature
+            self._homography_seen = True
+            latest_tracks = self.track_manager.trackers
+            preferred = latest_tracks.get(self.selected_class_name)
+            if preferred is not None and preferred.last_detection_time is not None:
+                age = max(0.0, float(frame_time - preferred.last_detection_time))
+                if age > 0.30:
+                    interval = YOLO_RECOVERY_INTERVAL_S
+        if frame_time - self._last_yolo_submit_t >= interval:
             self.fish_detector.submit_frame(frame, frame_time)
             self._last_yolo_submit_t = frame_time
 
         corner_pixels = self._detect_pool_corners(gray) if homography is None else {}
         yolo_result = self.fish_detector.get_latest()
         yolo_status = self.fish_detector.get_status()
+
+        if self.track_manager is not None:
+            # Sparse detector observations are fused independently for red and
+            # blue fish.  The EKF predicts to every camera timestamp, so the
+            # camera loop never invokes YOLO on every frame.
+            track_results = self.track_manager.step(
+                float(frame_time), yolo_result.get("detections") or []
+            )
+            selected = track_results.get(self.selected_class_name)
+            if (selected is None or not selected.valid) and not self._selected_track_started:
+                # Before a preferred class appears, expose the other class as
+                # a startup fallback.  Selection is otherwise sticky.
+                for fallback_name in ("red_fish", "blue_fish"):
+                    candidate = track_results.get(fallback_name)
+                    if candidate is not None and candidate.valid:
+                        selected = candidate
+                        break
+
+            if selected is not None and selected.valid:
+                self.selected_class_name = selected.class_name
+                self._selected_track_started = True
+                pixel = tuple(float(v) for v in selected.position)
+                source = (
+                    ReferenceSource.DETECTED
+                    if selected.source == "DETECTED"
+                    else ReferenceSource.PREDICTED
+                )
+                yolo_result = dict(yolo_result)
+                yolo_result.update(
+                    {
+                        "pixel": list(pixel),
+                        "bbox": list(selected.bbox) if selected.bbox is not None else None,
+                        "confidence": float(selected.confidence),
+                        "track_id": selected.track_id,
+                        "class_name": selected.class_name,
+                    }
+                )
+                reference = ReferenceObservation(
+                    timestamp=float(frame_time),
+                    source=source,
+                    position=pixel,
+                    confidence=float(selected.confidence),
+                    quality=float(selected.quality),
+                    marker_profiled=False,
+                    yolo_confirmed=selected.source == "DETECTED",
+                    usable_for_pwm_speed=False,
+                    gate_reasons=list(selected.gate_reasons),
+                    metrics={
+                        "class_name": selected.class_name,
+                        "track_id": selected.track_id,
+                        "anchor_ratio": list(selected.anchor_ratio),
+                        "anchor_quality": selected.anchor_quality,
+                        "prediction_age_s": selected.prediction_age_s,
+                        "detection_age_s": selected.detection_age_s,
+                        "covariance": list(selected.covariance),
+                    },
+                    search_roi=tuple(int(round(v)) for v in selected.bbox)
+                    if selected.bbox is not None else None,
+                )
+                selected_name = selected.class_name
+            else:
+                pixel = None
+                reference = ReferenceObservation(
+                    timestamp=float(frame_time),
+                    source=ReferenceSource.INVALID,
+                    position=None,
+                    confidence=0.0,
+                    quality=0.0,
+                    marker_profiled=False,
+                    yolo_confirmed=False,
+                    usable_for_pwm_speed=False,
+                    gate_reasons=["NO_VALID_TRACK"],
+                )
+                selected_name = None
+
+            display_pixel = self._smooth_pixel(pixel)
+            current, direct_marker = self._world_position(
+                pixel, reference.source, frame_time, homography
+            )
+            return VisionFrameResult(
+                frame=frame,
+                gray=gray,
+                frame_time=float(frame_time),
+                corner_pixels=corner_pixels,
+                yolo_result=yolo_result,
+                yolo_status=yolo_status,
+                reference=reference,
+                pixel=pixel,
+                display_pixel=display_pixel,
+                current_position=current,
+                control_position=current,
+                direct_marker_world_position=direct_marker,
+                velocity=None,
+                speed=None,
+                direction_deg=None,
+                tracks=track_results,
+                selected_class_name=selected_name,
+            )
+
+        # Compatibility path for the deprecated HSV marker tracker.  The live
+        # application passes ``track_manager`` and never enters this branch.
         reference = self.reference_tracker.update(
             frame=frame,
             timestamp=frame_time,
@@ -1556,6 +1790,7 @@ class VisionPipeline:
     def _world_position(self, pixel, source, frame_time, homography):
         direct_marker = None
         allowed = {
+            ReferenceSource.DETECTED,
             ReferenceSource.RIGID_BODY,
             ReferenceSource.MARKER,
             ReferenceSource.PREDICTED,

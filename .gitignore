@@ -38,17 +38,16 @@ Ultralytics/
 VISION/Ultralytics/
 VISION/configs/marker_profile.local.json
 VISION/configs/turn_calibration.local.json
+VISION/configs/fish_anchors.local.json
 VISION/configs/.marker_profile.test.json
 output/vision/
 
-# Vision media, extracted frames, and training runs are local artifacts.
-# Keep the small metadata and processing scripts under VISION/training tracked.
+# Vision media and local experiment artifacts are not runtime deliverables.
 /VISION.zip
 VISION/data/raw/*.mp4
 VISION/data/results/*.mp4
 VISION/models/candidates/*.pt
-VISION/training/fish_v15/dataset_v15_reviewed_large/images/
-VISION/training/fish_v15/runs/
+VISION/training/
 
 # Local reverse-engineering tool environment
 reverse_analysis/.tools/

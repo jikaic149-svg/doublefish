@@ -1,7 +1,0 @@
-train: splits/tight_test.txt
-val: splits/tight_test.txt
-test: splits/tight_test.txt
-
-names:
-  0: red_fish
-  1: blue_fish
