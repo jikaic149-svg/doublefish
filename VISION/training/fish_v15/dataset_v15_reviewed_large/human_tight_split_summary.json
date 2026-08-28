@@ -1,0 +1,24 @@
+{
+  "base_dataset": "C:\\Users\\rlyoulo\\Desktop\\video\\projects\\video-dataset\\dataset_v3",
+  "base_train_images": 96,
+  "human_tight_train_images": 36,
+  "human_tight_test_images": 12,
+  "final_train_images": 132,
+  "human_tight_instances": {
+    "train": {
+      "red_fish": 26,
+      "blue_fish": 30
+    },
+    "tight_test": {
+      "red_fish": 8,
+      "blue_fish": 12
+    }
+  },
+  "pseudo_labels_added": 0,
+  "holdout_profile": "representative",
+  "image_materialization": {
+    "copy": 173,
+    "hardlink": 167
+  },
+  "policy": "V6 base + 36 human-tight train; fixed 12-image blue-priority human-tight holdout"
+}

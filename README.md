@@ -11,9 +11,18 @@ codeFish/
 ├─ CameraTest.ino.bin                 原始 ESP32-S3 应用镜像
 ├─ reverse_analysis/                  镜像结构、字符串、网页、反汇编和伪代码
 ├─ PARTNER_USER_GUIDE.md              网页与 Partner 脚本使用说明
+├─ VISION/                            视觉程序、模型配置和数据处理工具
+├─ tests/                             Python 自动化测试（按功能域归类）
+├─ docs/                              架构和交接文档
+├─ assets/                            项目级图标等静态资源
 ├─ .vscode/                           编译、连接鱼 AP 和无线 OTA 工作流
 └─ RoboFishPartnerDriverSDK/          纯 ESP-IDF 功能等价重建工程
 ```
+
+视觉程序的入口是 `VISION/runtime/main.py`，测试位于 `tests/vision/`。训练脚本和
+数据集元数据位于 `VISION/training/fish_v15/`；原始视频、抽帧图片、训练运行目录
+和压缩归档属于本地产物，已由 `.gitignore` 排除。运行输出统一写入
+`output/vision/`，不会混入源码目录。
 
 原镜像 SHA-256：
 

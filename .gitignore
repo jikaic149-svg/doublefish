@@ -22,6 +22,7 @@ RoboFishPartnerDriverSDK/managed_components/
 *.tmp
 *.log
 .codex_camera_probe.jpg
+.codex_tmp/
 
 # Local Python/YOLO environments and generated caches
 .env
@@ -35,9 +36,19 @@ __pycache__/
 **/.ultralytics/
 Ultralytics/
 VISION/Ultralytics/
-VISION/marker_profile.local.json
-VISION/.marker_profile.test.json
-VISION/turn_calibration.local.json
+VISION/configs/marker_profile.local.json
+VISION/configs/turn_calibration.local.json
+VISION/configs/.marker_profile.test.json
+output/vision/
+
+# Vision media, extracted frames, and training runs are local artifacts.
+# Keep the small metadata and processing scripts under VISION/training tracked.
+/VISION.zip
+VISION/data/raw/*.mp4
+VISION/data/results/*.mp4
+VISION/models/candidates/*.pt
+VISION/training/fish_v15/dataset_v15_reviewed_large/images/
+VISION/training/fish_v15/runs/
 
 # Local reverse-engineering tool environment
 reverse_analysis/.tools/

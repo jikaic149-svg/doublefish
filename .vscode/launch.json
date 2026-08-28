@@ -2,28 +2,16 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "VISION: 仅摄像头延迟测试",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}\\VISION\\camera_latency_test.py",
-      "cwd": "${workspaceFolder}\\VISION",
-      "python": "${workspaceFolder}\\VISION\\.venv\\Scripts\\python.exe",
-      "console": "integratedTerminal",
-      "justMyCode": true
-    },
-    {
       "name": "VISION: YOLO GPU（外置 USB 摄像头）",
       "type": "debugpy",
       "request": "launch",
-      "program": "${workspaceFolder}\\VISION\\yolo(PID).py",
-      "cwd": "${workspaceFolder}\\VISION",
-      "python": "${workspaceFolder}\\VISION\\.venv\\Scripts\\python.exe",
+      "program": "${workspaceFolder}\\VISION\\runtime\\main.py",
+      "cwd": "${workspaceFolder}\\VISION\\runtime",
+      "python": "D:\\python\\venvs\\yolo\\ultralytics\\8.4.118\\Scripts\\python.exe",
       "console": "integratedTerminal",
       "justMyCode": true,
       "env": {
-        "PYTHONUNBUFFERED": "1",
-        "YOLO_CONFIG_DIR": "${workspaceFolder}\\VISION\\.ultralytics",
-        "MPLCONFIGDIR": "${workspaceFolder}\\VISION\\.matplotlib"
+        "PYTHONUNBUFFERED": "1"
       }
     },
     {

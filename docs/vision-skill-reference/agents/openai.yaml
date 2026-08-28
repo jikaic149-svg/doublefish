@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vision"
+  short_description: "YOLO PT training, inference, tracking, and MaixPy"
+  default_prompt: "Use $vision to build a dataset, train or run a PT model, analyze video, track objects, or develop a MaixPy vision app."

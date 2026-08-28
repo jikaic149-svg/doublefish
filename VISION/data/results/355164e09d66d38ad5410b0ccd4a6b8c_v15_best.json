@@ -1,0 +1,34 @@
+{
+  "source": "../raw/355164e09d66d38ad5410b0ccd4a6b8c_raw.mp4",
+  "output": "355164e09d66d38ad5410b0ccd4a6b8c_v15_best.mp4",
+  "model": "../../models/best.pt",
+  "model_sha256": "1031453e3e40f0cba28810117a7cfcb1d4bbbbbdca1596f1926ed30d2ba8ec19",
+  "settings": {
+    "imgsz": 640,
+    "confidence": 0.2,
+    "nms_iou": 0.7,
+    "same_class_iou": 0.5,
+    "selection": "same-class deduplicate, then highest-confidence one per class; preserve red/blue overlap"
+  },
+  "video": {
+    "codec": "mp4v",
+    "width": 1920,
+    "height": 1080,
+    "fps": 30.103900035093496,
+    "frames": 9050,
+    "duration_seconds": 300.6255,
+    "audio": "not copied"
+  },
+  "frames_with": {
+    "red_fish": 9050,
+    "blue_fish": 8937
+  },
+  "rendered_instances": {
+    "red_fish": 9050,
+    "blue_fish": 8937
+  },
+  "processing": {
+    "elapsed_seconds": 235.7543359999545,
+    "average_fps": 38.38741697629581
+  }
+}

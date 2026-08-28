@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "${workspaceFolder}\\VISION\\.venv\\Scripts\\python.exe",
+  "python.defaultInterpreterPath": "D:\\python\\venvs\\yolo\\ultralytics\\8.4.118\\Scripts\\python.exe",
   "python.terminal.activateEnvironment": true,
   "idf.espIdfPathWin": "D:\\ESP32\\ESP-IDF-v5.3.2",
   "idf.toolsPathWin": "D:\\ESP32\\.espressif",

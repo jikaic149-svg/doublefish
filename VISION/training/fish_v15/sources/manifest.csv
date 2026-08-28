@@ -1,0 +1,4 @@
+﻿video_id,source_file,source_path,bytes,codec,fps,frames,duration_sec,width,height,sampling_interval_sec,extracted_frames
+v01,34f306af8cefdaf5173ef8deadb963ae_raw.mp4,C:\Users\rlyoulo\Desktop\video\34f306af8cefdaf5173ef8deadb963ae_raw.mp4,582500171,h264,30.104207468,7765,257.937367,1920,1080,1.000000,258
+v02,355164e09d66d38ad5410b0ccd4a6b8c_raw.mp4,C:\Users\rlyoulo\Desktop\video\355164e09d66d38ad5410b0ccd4a6b8c_raw.mp4,678606689,h264,30.103900035,9050,300.625500,1920,1080,1.000000,301
+v03,809efb93aefe3c30bbac490c239a4d6f_raw.mp4,C:\Users\rlyoulo\Desktop\video\809efb93aefe3c30bbac490c239a4d6f_raw.mp4,540578141,h264,30.104781690,7204,239.297533,1920,1080,1.000000,240

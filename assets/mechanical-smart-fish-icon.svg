@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">机械智能小鱼图标</title>
+  <desc id="desc">一条由金属装甲、电路纹理、电子眼和机械关节组成的智能小鱼</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="128" y1="96" x2="896" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0c2638"/>
+      <stop offset="0.56" stop-color="#071824"/>
+      <stop offset="1" stop-color="#030b12"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientTransform="translate(541 506) rotate(90) scale(385)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#16d9ff" stop-opacity=".22"/>
+      <stop offset="1" stop-color="#16d9ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="metal" x1="327" y1="311" x2="704" y2="716" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#dcecf2"/>
+      <stop offset=".25" stop-color="#7e9da9"/>
+      <stop offset=".52" stop-color="#304b59"/>
+      <stop offset=".76" stop-color="#9ab4bd"/>
+      <stop offset="1" stop-color="#243d4a"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="386" y1="366" x2="657" y2="667" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#456777"/>
+      <stop offset=".52" stop-color="#162f3e"/>
+      <stop offset="1" stop-color="#0b202d"/>
+    </linearGradient>
+    <linearGradient id="cyan" x1="366" y1="356" x2="655" y2="648" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66efff"/>
+      <stop offset=".5" stop-color="#0bc7ee"/>
+      <stop offset="1" stop-color="#008ab7"/>
+    </linearGradient>
+    <linearGradient id="tail" x1="168" y1="330" x2="361" y2="690" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#244d61"/>
+      <stop offset=".5" stop-color="#0ec9e9"/>
+      <stop offset="1" stop-color="#163747"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="24" stdDeviation="28" flood-color="#000" flood-opacity=".5"/>
+    </filter>
+    <filter id="glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="13" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="bodyClip">
+      <path d="M325 511c0-155 129-264 307-235 126 20 214 108 236 210 5 22 5 34 0 54-25 102-114 185-240 207-173 29-303-81-303-236Z"/>
+    </clipPath>
+  </defs>
+
+  <!-- Deep-tech app tile -->
+  <rect x="44" y="44" width="936" height="936" rx="222" fill="url(#bg)"/>
+  <rect x="61" y="61" width="902" height="902" rx="206" fill="none" stroke="#89ecff" stroke-opacity=".12" stroke-width="4"/>
+  <circle cx="541" cy="506" r="385" fill="url(#halo)"/>
+
+  <!-- Sparse sonar arcs -->
+  <g fill="none" stroke="#48dff9" stroke-linecap="round" opacity=".18">
+    <path d="M744 212a342 342 0 0 1 111 87" stroke-width="10"/>
+    <path d="M781 260a282 282 0 0 1 61 53" stroke-width="5"/>
+    <path d="M242 763a351 351 0 0 1-75-88" stroke-width="9"/>
+  </g>
+  <g fill="#57eaff" opacity=".48">
+    <circle cx="860" cy="333" r="7"/><circle cx="880" cy="363" r="4"/>
+    <circle cx="183" cy="651" r="6"/><circle cx="169" cy="620" r="3"/>
+  </g>
+
+  <g filter="url(#shadow)">
+    <!-- Articulated tail -->
+    <path d="M337 465c-55-42-99-89-143-139-17-19-48-8-49 18-3 68 16 123 69 166-53 44-72 100-69 169 1 26 32 37 49 18 44-51 87-98 143-140Z" fill="url(#tail)" stroke="#73e8fa" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M189 371c28 51 49 93 49 139s-21 89-49 141" fill="none" stroke="#bbf7ff" stroke-opacity=".5" stroke-width="8"/>
+    <path d="M222 410l75 72m-75 128 75-72" stroke="#06232f" stroke-width="14" stroke-linecap="round" opacity=".7"/>
+    <circle cx="319" cy="510" r="54" fill="#0b2635" stroke="#8befff" stroke-width="9"/>
+    <circle cx="319" cy="510" r="24" fill="#10d3f1" stroke="#d0fbff" stroke-width="7"/>
+    <path d="M319 478v64m-32-32h64" stroke="#083444" stroke-width="8"/>
+
+    <!-- Main fish silhouette -->
+    <path d="M325 511c0-155 129-264 307-235 126 20 214 108 236 210 5 22 5 34 0 54-25 102-114 185-240 207-173 29-303-81-303-236Z" fill="url(#metal)" stroke="#9feeff" stroke-width="11" stroke-linejoin="round"/>
+
+    <!-- Segmented shell plates -->
+    <g clip-path="url(#bodyClip)">
+      <path d="M349 417c31-70 94-116 174-136l39 104-91 83Z" fill="#9bb8c1" opacity=".82"/>
+      <path d="M349 605c32 70 94 117 175 137l38-105-91-83Z" fill="#294653"/>
+      <path d="M472 468l90-83 118 4 57 120-57 121-118 7-91-83Z" fill="url(#plate)" stroke="#b0dce5" stroke-width="8"/>
+      <path d="M737 509l-57-120c67 13 121 54 163 120-42 65-96 106-163 121Z" fill="#244553"/>
+      <path d="M687 403c58 17 107 53 145 106-38 52-87 89-145 106l47-106Z" fill="#456878" opacity=".62"/>
+      <path d="M488 340l41 55m-80 178-45 83m359-191 52-36m-52 125 52 36" stroke="#061923" stroke-width="12" stroke-linecap="round" opacity=".65"/>
+    </g>
+
+    <!-- Dorsal and ventral actuator fins -->
+    <path d="M492 301c29-66 74-106 126-122 19-6 34 13 24 30l-67 111Z" fill="#274e60" stroke="#7ce9f9" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M508 720c30 62 72 100 121 115 19 6 34-13 24-30l-63-105Z" fill="#173b4b" stroke="#53d9ee" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M545 286l48-66m-38 516 49 62" stroke="#0ac7e6" stroke-width="10" stroke-linecap="round" opacity=".72"/>
+
+    <!-- Face plate and smart optical eye -->
+    <path d="M681 389c58 12 111 53 151 120-39 65-92 105-151 120l39-120Z" fill="#142f3d" stroke="#89eafa" stroke-width="8"/>
+    <circle cx="728" cy="473" r="63" fill="#05141d" stroke="#688996" stroke-width="10"/>
+    <circle cx="728" cy="473" r="39" fill="#061a24" stroke="url(#cyan)" stroke-width="9"/>
+    <circle cx="728" cy="473" r="19" fill="#bffaff" filter="url(#glow)"/>
+    <circle cx="715" cy="460" r="7" fill="#fff"/>
+    <path d="M781 559c22 6 41 4 58-7" fill="none" stroke="#21d9ef" stroke-width="10" stroke-linecap="round"/>
+
+    <!-- AI core -->
+    <path d="M536 427l63-36 63 36v72l-63 36-63-36Z" fill="#071c27" stroke="#38def6" stroke-width="9"/>
+    <circle cx="599" cy="463" r="34" fill="#0da9ca" fill-opacity=".2" stroke="#68efff" stroke-width="7"/>
+    <path d="M583 466l12 12 23-30" fill="none" stroke="#c7fbff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Circuit traces -->
+    <g fill="none" stroke="#32d9ef" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M542 463h-38l-31-33h-55"/>
+      <path d="M551 504h-55l-35 35h-66"/>
+      <path d="M628 525v52l-28 28v48"/>
+    </g>
+    <g fill="#99f5ff" stroke="#0b8faa" stroke-width="5">
+      <circle cx="416" cy="430" r="11"/><circle cx="394" cy="539" r="11"/><circle cx="600" cy="654" r="11"/>
+    </g>
+
+    <!-- Rivets -->
+    <g fill="#d7f8fb" stroke="#254b59" stroke-width="6">
+      <circle cx="421" cy="371" r="10"/><circle cx="407" cy="650" r="10"/>
+      <circle cx="668" cy="330" r="10"/><circle cx="671" cy="690" r="10"/>
+      <circle cx="806" cy="509" r="9"/>
+    </g>
+  </g>
+
+  <!-- Subtle water/energy trail -->
+  <g fill="none" stroke-linecap="round">
+    <path d="M190 758c75 49 166 74 272 72" stroke="#2bdcf2" stroke-width="8" opacity=".16"/>
+    <path d="M231 789c56 25 119 39 188 40" stroke="#9bf6ff" stroke-width="4" opacity=".18"/>
+  </g>
+</svg>
