@@ -4,9 +4,9 @@
 
 - 修改原因：视觉重构后模型路径由 Python 文件位置拼成绝对路径，换电脑或复制仓库时不便复用。
 - 最终决策：`VISION/runtime/config.py` 将运行时模型设为相对于 `VISION/runtime/` 的 `../models/best.pt`；`VisionApplication.run` 继续在启动前切换到该工作目录，YOLO 调用实际加载 `VISION/models/best.pt`。
-- 涉及文件：`VISION/runtime/config.py`、`VISION/README.md`、`README.md`、`tests/vision/test_runtime_config.py`。
+- 涉及文件：`VISION/runtime/config.py`、`VISION/runtime/perception.py`、`VISION/README.md`、`README.md`、`tests/vision/test_runtime_config.py`。
 - 验证方式和结果：检查相对路径归一化后指向仓库内 `VISION/models/best.pt`，运行配置单元测试，并在 Ultralytics 环境加载模型确认类别与权重可读；未修改弯道坐标、ESP32 固件、HTTP 协议或控制逻辑。
-- 已知限制：直接从其他目录单独实例化 `FishDetector` 时仍应先将工作目录设为 `VISION/runtime/`；正式入口和 VS Code 启动配置已满足该约定。
+- 已知限制：模型路径本身已由 `perception.py` 按模块位置解析，直接从其他目录实例化 `FishDetector` 也可加载；正式入口仍会切换到 `VISION/runtime/`，便于其他相对资源保持一致。
 - 待确认事项：在目标电脑上从仓库根目录和 VS Code 各启动一次，确认工作目录打印为 `VISION/runtime` 且不触发模型文件不存在。
 
 ## 2026-08-15 曲率转向第二轮参数整定
