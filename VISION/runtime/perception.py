@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 
@@ -11,7 +12,12 @@ def _default_model_factory(model_path: str):
     # 这条重型导入必须留在检测线程内，不能移回模块顶层。
     from ultralytics import YOLO
 
-    return YOLO(model_path)
+    # Resolve project-relative model paths from this module, so direct use of
+    # ``FishDetector`` is independent of the caller's current working folder.
+    path = Path(model_path)
+    if not path.is_absolute():
+        path = Path(__file__).resolve().parent / path
+    return YOLO(str(path))
 
 
 class FishDetector:

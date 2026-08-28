@@ -47,7 +47,10 @@ MARKER_BL = 3
 
 # Fish detection and fixed marker tracking.
 # The runtime model is the selected V15 checkpoint from the training experiments.
-YOLO_MODEL_PATH = os.path.join(MODEL_DIR, "best.pt")
+# ``VisionApplication.run`` changes into ``VISION/runtime`` before startup, so
+# this stays a portable project-relative path instead of embedding a machine
+# specific absolute path in the YOLO invocation.
+YOLO_MODEL_PATH = os.path.join("..", "models", "best.pt")
 YOLO_CONF_THRESHOLD = 0.18
 YOLO_IMG_SIZE = 640
 YOLO_DEVICE = 0

@@ -24,6 +24,9 @@ codeFish/
 和压缩归档属于本地产物，已由 `.gitignore` 排除。运行输出统一写入
 `output/vision/`，不会混入源码目录。
 
+视觉端启动后以 `VISION/runtime/` 为工作目录，YOLO 使用相对模型路径
+`../models/best.pt`，不绑定开发机绝对路径。
+
 原镜像 SHA-256：
 
 ```text

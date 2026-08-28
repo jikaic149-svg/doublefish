@@ -1,5 +1,14 @@
 # process
 
+## 2026-08-28 YOLO 运行时模型改为项目相对路径
+
+- 修改原因：视觉重构后模型路径由 Python 文件位置拼成绝对路径，换电脑或复制仓库时不便复用。
+- 最终决策：`VISION/runtime/config.py` 将运行时模型设为相对于 `VISION/runtime/` 的 `../models/best.pt`；`VisionApplication.run` 继续在启动前切换到该工作目录，YOLO 调用实际加载 `VISION/models/best.pt`。
+- 涉及文件：`VISION/runtime/config.py`、`VISION/README.md`、`README.md`、`tests/vision/test_runtime_config.py`。
+- 验证方式和结果：检查相对路径归一化后指向仓库内 `VISION/models/best.pt`，运行配置单元测试，并在 Ultralytics 环境加载模型确认类别与权重可读；未修改弯道坐标、ESP32 固件、HTTP 协议或控制逻辑。
+- 已知限制：直接从其他目录单独实例化 `FishDetector` 时仍应先将工作目录设为 `VISION/runtime/`；正式入口和 VS Code 启动配置已满足该约定。
+- 待确认事项：在目标电脑上从仓库根目录和 VS Code 各启动一次，确认工作目录打印为 `VISION/runtime` 且不触发模型文件不存在。
+
 ## 2026-08-15 曲率转向第二轮参数整定
 
 - 修改原因：第一轮新日志解析到190个样本，触顶仅32次且 `曲<=0.10` 时触顶为0，证明低曲率0.45倍和普通恢复0.45已经有效，不应继续削弱。问题集中在真实弯道：曲率0.30～0.36且航向误差仍在±10°时，提前转向的平均 `|x|` 只有0.031 m，鱼速仍约0.27～0.34 m/s；随后航向误差扩大到约90°才连续触顶，最大离轨达到0.37 m。固件确认 `Kp=300` 下旧 `±0.24 m` 只对应72%螺旋桨舵和鱼尾偏置权限。
